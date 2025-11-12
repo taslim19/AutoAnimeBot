@@ -205,9 +205,9 @@ class Tools:
         return out, err
 
     async def frame_counts(self, dl):
-        # Try mediainfo --fullscan first
+        # Try mediainfo first
         _x, _y = await self.bash_(
-            f'mediainfo --fullscan """{dl}""" | grep -i "Frame count"'
+            f'mediainfo """{dl}""" | grep -i "Frame count"'
         )
         if _y and _y.endswith("NOT_FOUND"):
             LOGS.error(f"ERROR: `{_y}`")
@@ -218,20 +218,6 @@ class Tools:
             if match:
                 return match.group(1)
             parts = _x.split(":", 1)
-            if len(parts) == 2:
-                frame_val = parts[1].strip().split("\n")[0].strip()
-                if frame_val.isdigit():
-                    return frame_val
-        
-        # Try mediainfo without --fullscan
-        _x2, _y2 = await self.bash_(
-            f'mediainfo """{dl}""" | grep -i "Frame count"'
-        )
-        if _x2:
-            match = re.search(r"Frame count\s*:\s*(\d+)", _x2, re.IGNORECASE)
-            if match:
-                return match.group(1)
-            parts = _x2.split(":", 1)
             if len(parts) == 2:
                 frame_val = parts[1].strip().split("\n")[0].strip()
                 if frame_val.isdigit():
