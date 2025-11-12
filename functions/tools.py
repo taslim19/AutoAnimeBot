@@ -205,22 +205,80 @@ class Tools:
         return out, err
 
     async def frame_counts(self, dl):
+        # Try mediainfo --fullscan first
         _x, _y = await self.bash_(
-            f'mediainfo --fullscan """{dl}""" | grep "Frame count"'
+            f'mediainfo --fullscan """{dl}""" | grep -i "Frame count"'
         )
         if _y and _y.endswith("NOT_FOUND"):
             LOGS.error(f"ERROR: `{_y}`")
-            return False
-        if not _x:
-            LOGS.error("ERROR: `FRAME_COUNT_MISSING`")
-            return False
-        match = re.search(r"Frame count\s*:\s*(\d+)", _x)
-        if match:
-            return match.group(1)
-        parts = _x.split(":", 1)
-        if len(parts) == 2:
-            return parts[1].strip().split("\n")[0]
-        LOGS.error(f"ERROR: `FRAME_COUNT_PARSE_FAILED` -> {_x.strip()}")
+            # Try ffprobe as fallback
+            return await self._frame_counts_ffprobe(dl)
+        if _x:
+            match = re.search(r"Frame count\s*:\s*(\d+)", _x, re.IGNORECASE)
+            if match:
+                return match.group(1)
+            parts = _x.split(":", 1)
+            if len(parts) == 2:
+                frame_val = parts[1].strip().split("\n")[0].strip()
+                if frame_val.isdigit():
+                    return frame_val
+        
+        # Try mediainfo without --fullscan
+        _x2, _y2 = await self.bash_(
+            f'mediainfo """{dl}""" | grep -i "Frame count"'
+        )
+        if _x2:
+            match = re.search(r"Frame count\s*:\s*(\d+)", _x2, re.IGNORECASE)
+            if match:
+                return match.group(1)
+            parts = _x2.split(":", 1)
+            if len(parts) == 2:
+                frame_val = parts[1].strip().split("\n")[0].strip()
+                if frame_val.isdigit():
+                    return frame_val
+        
+        # Try ffprobe as fallback
+        LOGS.warning("mediainfo failed to get frame count, trying ffprobe...")
+        return await self._frame_counts_ffprobe(dl)
+    
+    async def _frame_counts_ffprobe(self, dl):
+        """Fallback method using ffprobe to get frame count"""
+        try:
+            # Derive ffprobe path from ffmpeg path
+            if os.path.dirname(Var.FFMPEG):
+                ffprobe = os.path.join(os.path.dirname(Var.FFMPEG), "ffprobe")
+            else:
+                ffprobe = "ffprobe"
+            
+            ffprobe_cmd = f'{ffprobe} -v error -select_streams v:0 -count_packets -show_entries stream=nb_read_packets -of csv=p=0 """{dl}"""'
+            _x, _y = await self.bash_(ffprobe_cmd)
+            if _x and _x.strip().isdigit():
+                return _x.strip()
+            
+            # Alternative: use duration and fps to estimate
+            duration_cmd = f'{ffprobe} -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 """{dl}"""'
+            fps_cmd = f'{ffprobe} -v error -select_streams v:0 -show_entries stream=r_frame_rate -of default=noprint_wrappers=1:nokey=1 """{dl}"""'
+            
+            duration_out, _ = await self.bash_(duration_cmd)
+            fps_out, _ = await self.bash_(fps_cmd)
+            
+            if duration_out and fps_out:
+                try:
+                    duration = float(duration_out.strip())
+                    fps_parts = fps_out.strip().split('/')
+                    if len(fps_parts) == 2:
+                        fps = float(fps_parts[0]) / float(fps_parts[1])
+                    else:
+                        fps = float(fps_parts[0])
+                    frame_count = int(duration * fps)
+                    LOGS.info(f"Estimated frame count from duration: {frame_count}")
+                    return str(frame_count)
+                except (ValueError, ZeroDivisionError):
+                    pass
+        except Exception as e:
+            LOGS.error(f"ffprobe fallback failed: {e}")
+        
+        LOGS.error("ERROR: `FRAME_COUNT_MISSING` - All methods failed")
         return False
 
     async def compress(self, dl, out, log_msg):
