@@ -211,7 +211,17 @@ class Tools:
         if _y and _y.endswith("NOT_FOUND"):
             LOGS.error(f"ERROR: `{_y}`")
             return False
-        return _x.split(":")[1].split("\n")[0]
+        if not _x:
+            LOGS.error("ERROR: `FRAME_COUNT_MISSING`")
+            return False
+        match = re.search(r"Frame count\s*:\s*(\d+)", _x)
+        if match:
+            return match.group(1)
+        parts = _x.split(":", 1)
+        if len(parts) == 2:
+            return parts[1].strip().split("\n")[0]
+        LOGS.error(f"ERROR: `FRAME_COUNT_PARSE_FAILED` -> {_x.strip()}")
+        return False
 
     async def compress(self, dl, out, log_msg):
         total_frames = await self.frame_counts(dl)
