@@ -17,6 +17,7 @@
 # credit to t.me/kAiF_00z (github.com/kaif-00z)
 
 import asyncio
+import hashlib
 import json
 import math
 import os
@@ -24,6 +25,7 @@ import re
 import subprocess
 import time
 from traceback import format_exc
+from urllib.parse import unquote, urlparse
 
 import aiofiles
 import aiohttp
@@ -77,9 +79,20 @@ class Tools:
             if not link:
                 return None
             image = await self.async_searcher(link, re_content=True)
-            fn = f"thumbs/{link.split('/')[-1]}"
-            if not fn.endswith((".jpg" or ".png")):
-                fn += ".jpg"
+            os.makedirs("thumbs", exist_ok=True)
+            parsed = urlparse(link)
+            file_name = unquote(os.path.basename(parsed.path))
+            stem, ext = os.path.splitext(file_name)
+            if not stem:
+                stem = hashlib.md5(link.encode("utf-8")).hexdigest()
+            if len(stem) > 80:
+                stem = hashlib.md5(stem.encode("utf-8")).hexdigest()
+            safe_stem = re.sub(r"[^A-Za-z0-9_.-]", "_", stem) or hashlib.md5(
+                link.encode("utf-8")
+            ).hexdigest()
+            if ext.lower() not in (".jpg", ".jpeg", ".png", ".webp"):
+                ext = ".jpg"
+            fn = os.path.join("thumbs", f"{safe_stem}{ext.lower()}")
             async with aiofiles.open(fn, "wb") as file:
                 await file.write(image)
             return fn
