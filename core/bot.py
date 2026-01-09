@@ -128,12 +128,38 @@ class Bot(TelegramClient):
         return post
 
     async def upload_poster(self, file, caption, channel_id=None):
-        post = await self.send_file(
-            channel_id if channel_id else Var.MAIN_CHANNEL,
-            file=file,
-            caption=caption or "",
-        )
-        return post
+        target_channel = channel_id if channel_id else Var.MAIN_CHANNEL
+        try:
+            # Resolve the channel entity first to ensure it's in cache
+            await self.get_entity(target_channel)
+        except ValueError:
+            # If bot client can't access, try user_client if available
+            if self.user_client:
+                try:
+                    await self.user_client.get_entity(target_channel)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        
+        # Try sending with bot client first
+        try:
+            post = await self.send_file(
+                target_channel,
+                file=file,
+                caption=caption or "",
+            )
+            return post
+        except ValueError:
+            # If bot client fails, try user_client if available
+            if self.user_client:
+                post = await self.user_client.send_file(
+                    target_channel,
+                    file=file,
+                    caption=caption or "",
+                )
+                return post
+            raise
 
     async def is_joined(self, channel_id, user_id):
         try:
